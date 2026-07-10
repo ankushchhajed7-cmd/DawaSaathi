@@ -413,6 +413,16 @@ function renderChips(){
 }
 function setCat(c){ activeCat=c; renderChips(); render(); }
 
+function toggleAIMore(){
+  const box = document.getElementById('ai-more');
+  const btn = document.getElementById('ai-more-btn');
+  if(!box) return;
+  if(!btn.dataset.label) btn.dataset.label = btn.textContent;
+  const isHidden = box.style.display === 'none';
+  box.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? 'Kam dikhao' : btn.dataset.label;
+}
+
 function toggleMore(idx){
   const box = document.getElementById('more-'+idx);
   const btn = document.getElementById('more-btn-'+idx);
@@ -551,7 +561,7 @@ const AI_PROMPT = (med) => `You are a pharmacist assistant for India. The user s
 Identify this Indian medicine brand (or salt) and provide substitute brands with the SAME salt composition and strength, sold in India.
 Reply ONLY with valid JSON, no markdown, no backticks, exactly this shape:
 {"found":true,"salt":"<salt name with strength>","cat":"<short category in Hinglish like Bukhar/Dard, Antibiotic, Pet/Gas, BP/Heart, Diabetes, Allergy/Sardi, Vitamin/Tonic, Skin, Nerve/Mind, Other>","brands":[{"n":"<brand name>","c":"<company>","p":<approx MRP number in INR or null>,"k":"<pack like 10 tab or null>"}],"ja":{"available":true,"p":<approx Jan Aushadhi price number or null>,"k":"<pack or null>"},"note":"<one short caution line in Hinglish if relevant, else empty string>"}
-Rules: 4-6 well-known substitute brands, include the searched brand itself if it is a brand. Prices are approximate MRP; use null if unsure — NEVER invent precise prices you are not confident about. If you cannot confidently identify the medicine, reply {"found":false}. If the medicine is a scheduled/controlled or high-risk drug (e.g. psychotropic, narcotic), still identify the salt but set note to a strong doctor-consultation warning in Hinglish and set brands to at most 2 well-known ones.`;
+Rules: List as many real, well-known substitute brands sold in India as you confidently know — aim for at least 15-20 if that many genuinely exist for this salt/strength, but NEVER invent fake brand names just to hit a number; include the searched brand itself if it is a brand. Prices are approximate MRP; use null if unsure — NEVER invent precise prices you are not confident about. If you cannot confidently identify the medicine, reply {"found":false}. If the medicine is a scheduled/controlled or high-risk drug (e.g. psychotropic, narcotic), still identify the salt but set note to a strong doctor-consultation warning in Hinglish and set brands to at most 2 well-known ones.`;
 
 /* Model fallback chain — pehla jo chale wahi use hoga, phir yaad rahega */
 const MODELS = ["gemini-2.5-flash-lite","gemini-2.5-flash","gemini-flash-lite-latest","gemini-flash-latest"];
@@ -638,13 +648,21 @@ function fmtP(p){ return (p===null||p===undefined||isNaN(p)) ? '—' : '₹'+p; 
 let lastAI = null;
 function renderAI(obj, med, fromCache){
   lastAI = obj;
-  const brands = (obj.brands||[]).slice(0,6);
+  const VISIBLE_AI_BRANDS = 20; // kam se kam itne substitute pehle hi dikhao
+  const brands = obj.brands||[];
   const sorted = [...brands].sort((a,b)=>(b.p||0)-(a.p||0));
-  const rows = sorted.map(b=>`
+  const visible = sorted.slice(0, VISIBLE_AI_BRANDS);
+  const extra = sorted.slice(VISIBLE_AI_BRANDS);
+  const rowHTML = b=>`
     <div class="brow">
       <div class="bl"><b>${esc(b.n)}</b><span>${esc(b.c||'—')}</span></div>
       <div class="br"><span class="price">${fmtP(b.p)}</span><span class="pack">${esc(b.k||'')} ${b.p!=null?'(approx MRP)':''}</span></div>
-    </div>`).join('');
+    </div>`;
+  const rows = visible.map(rowHTML).join('');
+  const extraRows = extra.map(rowHTML).join('');
+  const moreToggle = extra.length ? `
+    <div class="brow-more" id="ai-more" style="display:none">${extraRows}</div>
+    <button class="more-btn" onclick="toggleAIMore()" id="ai-more-btn">+${extra.length} aur substitute dekhein</button>` : '';
 
   const priced = sorted.filter(b=>b.p!=null);
   let jaBlock = '';
@@ -668,7 +686,7 @@ function renderAI(obj, med, fromCache){
       <div class="sname">${esc(obj.salt)}</div>
       <span class="ai-badge">✦ AI ${fromCache?'(saved)':''}</span>
     </div>
-    <div class="brands">${rows}</div>
+    <div class="brands">${rows}${moreToggle}</div>
     ${jaBlock}
     ${obj.note ? `<div class="ai-note">⚕️ ${esc(obj.note)}</div>` : ''}
     <div class="ai-note">🤖 Ye AI ka jawab hai — salt aur price pharmacist se verify zaroor karein.</div>
